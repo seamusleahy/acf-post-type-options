@@ -64,10 +64,23 @@ class acf_post_types_options_plugin {
 	 */
 	function acf_location_rules_values_post_type_options( $choices ) {			
 		$choices = array(
-			'all' => __( 'All Post Types', 'acf' )
+			'__all' => __( 'All Post Types', 'acf' )
 		);
+
+		$post_types = get_post_types( array( 'public' => true ), 'objects' );
+		uasort( $post_types, function( $a, $b ) {
+			if ( $a->labels->name == $b->labels->name ) {
+				return 0;
+			}
+
+			return $a->labels->name < $b->labels->name ? -1 : 1;
+		});
 		
-	    return $choices;
+		foreach ( $post_types as $post_type ) {
+			$choices[ $post_type->name ] = $post_type->labels->name;
+		}
+
+	  return $choices;
 	}
 
 
@@ -83,17 +96,22 @@ class acf_post_types_options_plugin {
 	function rule_match( $match, $rule, $options ) {
 
 		// Only handle if it is our's
-		if ( $rule['param'] == 'post_type_options' ) {
+		if ( $rule['param'] == 'post_type_options' && isset($options['post_type_options']) ) {
 			if ( !is_admin() ) {
 				return false;
 			}
 
 			$screen = get_current_screen();
-			if ( $screen->id != 'settings_page_acf-post-type-options' ) {
+			if ( is_wp_error($screen) || !isset($screen->id) || $screen->id != 'settings_page_acf-post-type-options' ) {
 				return false;
 			}
 
-			$match = $rule['operator'] == '==' && $rule['value'] == 'all';
+			if ( $rule['value'] == '__all' ) {
+				$match = $rule['operator'] == '==';
+			} else {
+				$match = $rule['value'] == $options['post_type_options'];
+				$match = $rule['operator'] == '==' ? $match : !$match;
+			}			
 		}
 
 		return $match;
@@ -174,16 +192,12 @@ class acf_post_types_options_plugin {
 		}
 		
 		// SETUP
-		// get field groups
-		$filter = array();
-		$metabox_ids = array();
-		$metabox_ids = apply_filters( 'acf/location/match_field_groups', $metabox_ids, $filter );
 
 		// Check if fields exists
-		if( empty($metabox_ids) ) {
-			$this->data['no_fields'] = true;
-			return false;	
-		}
+		// if( empty($metabox_ids) ) {
+		// 	$this->data['no_fields'] = true;
+		// 	return false;	
+		// }
 		
 		// Style
 		echo '<style type="text/css">#side-sortables.empty-container { border: 0 none; }</style>';
@@ -197,6 +211,11 @@ class acf_post_types_options_plugin {
 		if( $acfs ) {
 			$post_types = $this->get_post_types();
 			foreach ( $post_types as $post_type ) {
+					// get field groups
+					$filter = array( 'post_type_options' => $post_type->name );
+					$metabox_ids = array();
+					$metabox_ids = apply_filters( 'acf/location/match_field_groups', $metabox_ids, $filter );
+
 				foreach( $acfs as $acf ) {
 					// load options for the field group
 					$acf['options'] = apply_filters('acf/field_group/get_options', array(), $acf['id']);
@@ -219,7 +238,7 @@ class acf_post_types_options_plugin {
 					}
 				}
 			}
-		}	
+		}
 	}
 	
 	
